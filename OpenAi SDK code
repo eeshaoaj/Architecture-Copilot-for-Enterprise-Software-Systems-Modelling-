@@ -1,0 +1,242 @@
+
+from agents import function_tool, Agent, ModelSettings, TResponseInputItem, Runner, RunConfig, trace
+from pydantic import BaseModel
+
+# Tool definitions
+@function_tool
+def wait_for_user_input(prompt: str):
+  pass
+
+class EntityAgentSchema(BaseModel):
+  industry: str
+  region: str
+  levels: float
+  artefact: str
+
+
+class OrchestrationAgentSchema(BaseModel):
+  pass
+
+
+capability_agent = Agent(
+  name="Capability agent",
+  instructions="""Provided below is an  ENTERPRISE GLOSSARY of a Business Capability in a statement format where each line representing a single statement.
+
+ENTERPRISE GLOSSARY: Business Capability
+
+Business Capability-is-a business's  capacity for achieving outcomes
+Business Capability-is expressed as-a noun-verb format 
+Noun Part- is-a unique business object of interest
+Stratification-is-classifying and grouping business capabilities
+Purpose of Stratification-is-breaking down capability maps for understanding
+Stratification Category-provides-different perspectives for stakeholders
+Levelling-is-decomposing top-level capabilities for detail
+Capability Level-is broken down into-granular levels 
+Capability Levels-are arranged-hierarchically
+Capability Levels-have-Parent Child relationships between each level 
+Each Parent Capability -has- more than one child
+Each Parent Capability -has children- at all levels
+Capabilities - vary - from one Industry to another
+Capabilities - vary - based on the Region and the applicable law
+
+
+INSTRUCTIONS:
+
+Considering the ENTERPRISE GLOSSARY of a Business Capability above into account and respond based on the given INPUT VARIABLES:  
+
+1. Identify the specific Laws, Cultural, Economic and Political aspects for the given Region.
+2. Provide the Level 1, Level 2 and Level 3 Capabilities arranged hierarchically under each other taking the region specific aspects identified in the previous step into account when applicable.
+3. Provide a description for each Capability
+4. Respond ONLY in the given OUTPUT FORMAT
+
+INPUT VARIABLES:
+
+Industry: {{Industry}}
+Region: {{Region}}
+Number of Level 1 Capabilities: {{Number}}
+
+OUTPUT FORMAT: 
+CSV, example:
+```
+Level, Capability, Parent, Description, 
+1, 1. Claims Management, \"\", \"Ability to identify, track, and respond to a demand or request to indemnify customers under the terms of an agreement.\", 
+2, 1.1. Claims Settlement, Claims Management, \"...\"
+2, 1.2. Dispute Resolution, Claims Management, \"...\"
+3, 1.1.1. Claims Handling, Claims Settlement, \"...\"
+3, 1.1.2. Claims Recovery, Claims Settlement, \"...\"
+```""",
+  model="gpt-4o",
+  model_settings=ModelSettings(
+    temperature=1,
+    top_p=1,
+    max_tokens=2048,
+    store=True
+  )
+)
+
+
+entity_agent = Agent(
+  name="Entity Agent",
+  instructions="""Extract structured inputs
+ industry, region, levels, artefact... 
+Respond in JSON.""",
+  model="gpt-4o",
+  output_type=EntityAgentSchema,
+  model_settings=ModelSettings(
+    temperature=1,
+    top_p=1,
+    max_tokens=2048,
+    store=True
+  )
+)
+
+
+orchestration_agent = Agent(
+  name="Orchestration Agent",
+  instructions="""You are a router. Output ONE word only.
+
+Return:
+- MAP_ONLY  (user provided both Capabilities and Applications lists)
+- GEN_AND_MAP (user asked to generate capabilities AND map to provided applications)
+- GEN_ONLY (user asked to generate capabilities only OR no applications list present)
+
+Rules:
+1) If the user message contains a section \"Capabilities:\" AND a section \"Applications:\" -> MAP_ONLY
+2) If user asks for mapping AND contains \"Applications:\" but no \"Capabilities:\" -> GEN_AND_MAP
+3) Otherwise -> GEN_ONLY
+""",
+  model="gpt-4o",
+  output_type=OrchestrationAgentSchema,
+  model_settings=ModelSettings(
+    temperature=1,
+    top_p=1,
+    max_tokens=2048,
+    store=True
+  )
+)
+
+
+app_cap_mapping_agent = Agent(
+  name="App-cap mapping Agent",
+  instructions="""You are an Enterprise Architecture assistant.
+Your task is to map Applications to Business Capabilities to support Application Portfolio Mapping (APM).
+
+ENTERPRISE GLOSSARY
+- A Capability represents what the business does or can do to achieve outcomes.
+- A Capability is enabled or delivered by one or more Applications.
+- An Application automates, supports, or enables one or more Capabilities.
+- An Application has a lifecycle stage, a domain and an owner.
+
+INPUT REQUIREMENTS
+- Applications must be provided as an attached CSV or pasted CSV text.
+INSTRUCTIONS
+1. Identify which Applications directly enable or support each Capability.
+2. Each application may map to one or more capabilities.
+3. Only include mappings that are essential and relevant (avoid weak or indirect links).
+4. Classify the domain and owner of the application.
+5. Respond only in the required CSV format — no explanations or commentary.
+6. Ask the user for user input
+7.ONLY respond when orchestration agent asked you to.
+8.If the user pastes capabilities, then map those capabilities; otherwise, use the capabilities generated by the capability agent.
+
+OUTPUT FORMAT 
+'''
+CSV
+'''
+Example:
+Capability name, Application ID, Application name, domain, owner
+Claims information management, A1,A10,A15, Claim information, Claims, Claims ops
+Customer Information Management,A7,Customer Account Management,Customer Service & Operations, Customer solutions
+
+
+USER INPUT
+Capabilities CSV: {{Capabilities}}
+Applications CSV: {{Applications}}
+""",
+  model="gpt-4.1",
+  tools=[
+    wait_for_user_input
+  ],
+  model_settings=ModelSettings(
+    temperature=1,
+    top_p=1,
+    parallel_tool_calls=True,
+    max_tokens=2048,
+    store=True
+  )
+)
+
+
+class WorkflowInput(BaseModel):
+  input_as_text: str
+
+
+# Main code entrypoint
+async def run_workflow(workflow_input: WorkflowInput):
+  with trace("Content generation"):
+    state = {
+
+    }
+    workflow = workflow_input.model_dump()
+    conversation_history: list[TResponseInputItem] = [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "input_text",
+            "text": workflow["input_as_text"]
+          }
+        ]
+      }
+    ]
+    entity_agent_result_temp = await Runner.run(
+      entity_agent,
+      input=[
+        *conversation_history
+      ],
+      run_config=RunConfig(trace_metadata={
+        "__trace_source__": "agent-builder",
+        "workflow_id": "wf_691e87316068819098b9d587c9817a690e6bddb2ca056818"
+      })
+    )
+
+    conversation_history.extend([item.to_input_item() for item in entity_agent_result_temp.new_items])
+
+    entity_agent_result = {
+      "output_text": entity_agent_result_temp.final_output.json(),
+      "output_parsed": entity_agent_result_temp.final_output.model_dump()
+    }
+    orchestration_agent_result_temp = await Runner.run(
+      orchestration_agent,
+      input=[
+        *conversation_history
+      ],
+      run_config=RunConfig(trace_metadata={
+        "__trace_source__": "agent-builder",
+        "workflow_id": "wf_691e87316068819098b9d587c9817a690e6bddb2ca056818"
+      })
+    )
+
+    conversation_history.extend([item.to_input_item() for item in orchestration_agent_result_temp.new_items])
+
+    orchestration_agent_result = {
+      "output_text": orchestration_agent_result_temp.final_output.json(),
+      "output_parsed": orchestration_agent_result_temp.final_output.model_dump()
+    }
+    capability_agent_result_temp = await Runner.run(
+      capability_agent,
+      input=[
+        *conversation_history
+      ],
+      run_config=RunConfig(trace_metadata={
+        "__trace_source__": "agent-builder",
+        "workflow_id": "wf_691e87316068819098b9d587c9817a690e6bddb2ca056818"
+      })
+    )
+
+    conversation_history.extend([item.to_input_item() for item in capability_agent_result_temp.new_items])
+
+    capability_agent_result = {
+      "output_text": capability_agent_result_temp.final_output_as(str)
+    }
+    return capability_agent_result
