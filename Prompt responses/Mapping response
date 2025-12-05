@@ -1,0 +1,43 @@
+Capability name,Application ID,Application name,Domain,Owner,Lifecycle stage,Functional fit,Business value,Cost
+2.1.1 Account Compliance Validation,A5,"Training, Certification and Compliance",Regulatory Reporting & Compliance,Compliance,Active,Good,High,250000
+2.1.1 Account Compliance Validation,A7,"Training, Certification and Compliance",Regulatory Reporting & Compliance,Compliance,Active,Good,High,250000
+2.5 Claim Management,A9,Claim information,Claims Management,Claims,Retiring,Poor,Low,100000
+2.5.1 Claim Information Management,A9,Claim information,Claims Management,Claims,Retiring,Poor,Low,100000
+2.6.3 Customer Information Management,A9,Claim information,Claims Management,Claims,Retiring,Poor,Low,100000
+2.6.4 Customer Preference Management,A9,Claim information,Claims Management,Claims,Retiring,Poor,Low,100000
+2.6.4 Customer Preference Management,A12,Billing & Payment Processing,Billing & Payments,Finance,Active,Good,High,400000
+2.6.4 Customer Preference Management,A21,Customer Preference Centre,Customer Experience,Customer Experience,Active,Good,High,200000
+2.8.5 Underwriting Eligibility Determination,A2,Assist Employer Choice of Plans,Enrolment & Eligibility,Enrolment Operations,Active,Good,High,250000
+2.8.5 Underwriting Eligibility Determination,A8,Eligibility Determination Services,Enrolment & Eligibility,Enrolment Operations,Active,Good,High,300000
+2.9 Product Lifecycle Management,A4,Incentive Compensation and Design Management,General Enterprise Application,Enterprise Services,Active,Good,High,250000
+2.9 Product Lifecycle Management,A29,Product Catalogue and Configuration,Product Management,Product Team,Active,Good,High,450000
+2.9 Product Lifecycle Management,A34,Product Lifecycle Management,Product Management,Product Team,Active,Good,High,550000
+2.9.1 Product Definition,A29,Product Catalogue and Configuration,Product Management,Product Team,Active,Good,High,450000
+2.9.1 Product Definition,A34,Product Lifecycle Management,Product Management,Product Team,Active,Good,High,550000
+2.9.2 Product Configuration,A29,Product Catalogue and Configuration,Product Management,Product Team,Active,Good,High,450000
+2.9.2 Product Configuration,A30,Product Pricing and Rating Engine,Product Management,Product Team,Active,Good,High,500000
+2.9.3 Product Pricing,A30,Product Pricing and Rating Engine,Product Management,Product Team,Active,Good,High,500000
+2.9.4 Product Performance Analysis,A31,Product Analytics and Insights,Analytics & Reporting,Data & Analytics,Active,Good,High,350000
+2.9.4 Product Performance Analysis,A35,Underwriting Analytics,Underwriting,Underwriting,Active,Good,High,300000
+2.9.5 Product Portfolio Management,A34,Product Lifecycle Management,Product Management,Product Team,Active,Good,High,550000
+2.9.6 Product Retirement,A9,Claim information,Claims Management,Claims,Retiring,Poor,Low,100000
+2.10 Product Management,A29,Product Catalogue and Configuration,Product Management,Product Team,Active,Good,High,450000
+2.10 Product Management,A30,Product Pricing and Rating Engine,Product Management,Product Team,Active,Good,High,500000
+2.10 Product Management,A34,Product Lifecycle Management,Product Management,Product Team,Active,Good,High,550000
+2.10.1 Product Strategy and Roadmap,A34,Product Lifecycle Management,Product Management,Product Team,Active,Good,High,550000
+2.10.2 Product Performance Monitoring,A31,Product Analytics and Insights,Analytics & Reporting,Data & Analytics,Active,Good,High,350000
+2.11 Regulatory Reporting,A5,"Training, Certification and Compliance",Regulatory Reporting & Compliance,Compliance,Active,Good,High,250000
+2.11 Regulatory Reporting,A22,Regulatory Reporting Platform,Regulatory Reporting & Compliance,Compliance,Active,Good,High,300000
+2.11.1 Regulatory Data Collection,A22,Regulatory Reporting Platform,Regulatory Reporting & Compliance,Compliance,Active,Good,High,300000
+2.11.2 Regulatory Report Generation,A22,Regulatory Reporting Platform,Regulatory Reporting & Compliance,Compliance,Active,Good,High,300000
+2.11.3 Regulatory Submission Management,A22,Regulatory Reporting Platform,Regulatory Reporting & Compliance,Compliance,Active,Good,High,300000
+2.12 Payments Management,A12,Billing & Payment Processing,Billing & Payments,Finance,Active,Good,High,400000
+2.12.1 Payment Processing,A12,Billing & Payment Processing,Billing & Payments,Finance,Active,Good,High,400000
+2.12.2 Payment Reconciliation,A12,Billing & Payment Processing,Billing & Payments,Finance,Active,Good,High,400000
+2.13 Enrolment Management,A1,Assist Consumer Choice and Enrolment,Enrolment & Eligibility,Enrolment Operations,Planned,TBD,Medium,500000
+2.13 Enrolment Management,A2,Assist Employer Choice of Plans,Enrolment & Eligibility,Enrolment Operations,Active,Good,High,250000
+2.13.1 Consumer Enrolment,A1,Assist Consumer Choice and Enrolment,Enrolment & Eligibility,Enrolment Operations,Planned,TBD,Medium,500000
+2.13.2 Employer Enrolment,A2,Assist Employer Choice of Plans,Enrolment & Eligibility,Enrolment Operations,Active,Good,High,250000
+2.14 Broker Management,A3,Broker/Navigator Relationship Management,Broker & Intermediary Management,Broker Relations,Active,Good,High,250000
+2.14.1 Broker Relationship Management,A3,Broker/Navigator Relationship Management,Broker & Intermediary Management,Broker Relations,Active,Good,High,250000
+2.14.2 Broker Commission Management,A4,Incentive Compensation and Design Management,General Enterprise Application,Enterprise Services,Active,Good,High,250000
