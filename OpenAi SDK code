@@ -1,124 +1,25 @@
+import io
+import re
+from typing import Optional, Tuple
 
-from agents import function_tool, Agent, ModelSettings, TResponseInputItem, Runner, RunConfig, trace
-from pydantic import BaseModel
+import pandas as pd
+import streamlit as st
 
-# Tool definitions
-@function_tool
-def wait_for_user_input(prompt: str):
-  pass
+from agents import Agent, Runner  # openai-agents-python
 
-class EntityAgentSchema(BaseModel):
-  industry: str
-  region: str
-  levels: float
-  artefact: str
+import os
+from dotenv import load_dotenv
 
+load_dotenv()  # loads .env into environment variables
 
-class OrchestrationAgentSchema(BaseModel):
-  pass
-
-
-capability_agent = Agent(
-  name="Capability agent",
-  instructions="""Provided below is an  ENTERPRISE GLOSSARY of a Business Capability in a statement format where each line representing a single statement.
-
-ENTERPRISE GLOSSARY: Business Capability
-
-Business Capability-is-a business's  capacity for achieving outcomes
-Business Capability-is expressed as-a noun-verb format 
-Noun Part- is-a unique business object of interest
-Stratification-is-classifying and grouping business capabilities
-Purpose of Stratification-is-breaking down capability maps for understanding
-Stratification Category-provides-different perspectives for stakeholders
-Levelling-is-decomposing top-level capabilities for detail
-Capability Level-is broken down into-granular levels 
-Capability Levels-are arranged-hierarchically
-Capability Levels-have-Parent Child relationships between each level 
-Each Parent Capability -has- more than one child
-Each Parent Capability -has children- at all levels
-Capabilities - vary - from one Industry to another
-Capabilities - vary - based on the Region and the applicable law
-
-
-INSTRUCTIONS:
-
-Considering the ENTERPRISE GLOSSARY of a Business Capability above into account and respond based on the given INPUT VARIABLES:  
-
-1. Identify the specific Laws, Cultural, Economic and Political aspects for the given Region.
-2. Provide the Level 1, Level 2 and Level 3 Capabilities arranged hierarchically under each other taking the region specific aspects identified in the previous step into account when applicable.
-3. Provide a description for each Capability
-4. Respond ONLY in the given OUTPUT FORMAT
-
-INPUT VARIABLES:
-
-Industry: {{Industry}}
-Region: {{Region}}
-Number of Level 1 Capabilities: {{Number}}
-
-OUTPUT FORMAT: 
-CSV, example:
-```
-Level, Capability, Parent, Description, 
-1, 1. Claims Management, \"\", \"Ability to identify, track, and respond to a demand or request to indemnify customers under the terms of an agreement.\", 
-2, 1.1. Claims Settlement, Claims Management, \"...\"
-2, 1.2. Dispute Resolution, Claims Management, \"...\"
-3, 1.1.1. Claims Handling, Claims Settlement, \"...\"
-3, 1.1.2. Claims Recovery, Claims Settlement, \"...\"
-```""",
-  model="gpt-4o",
-  model_settings=ModelSettings(
-    temperature=1,
-    top_p=1,
-    max_tokens=2048,
-    store=True
-  )
-)
-
-
-entity_agent = Agent(
-  name="Entity Agent",
-  instructions="""Extract structured inputs
- industry, region, levels, artefact... 
-Respond in JSON.""",
-  model="gpt-4o",
-  output_type=EntityAgentSchema,
-  model_settings=ModelSettings(
-    temperature=1,
-    top_p=1,
-    max_tokens=2048,
-    store=True
-  )
-)
-
-
-orchestration_agent = Agent(
-  name="Orchestration Agent",
-  instructions="""You are a router. Output ONE word only.
-
-Return:
-- MAP_ONLY  (user provided both Capabilities and Applications lists)
-- GEN_AND_MAP (user asked to generate capabilities AND map to provided applications)
-- GEN_ONLY (user asked to generate capabilities only OR no applications list present)
-
-Rules:
-1) If the user message contains a section \"Capabilities:\" AND a section \"Applications:\" -> MAP_ONLY
-2) If user asks for mapping AND contains \"Applications:\" but no \"Capabilities:\" -> GEN_AND_MAP
-3) Otherwise -> GEN_ONLY
-""",
-  model="gpt-4o",
-  output_type=OrchestrationAgentSchema,
-  model_settings=ModelSettings(
-    temperature=1,
-    top_p=1,
-    max_tokens=2048,
-    store=True
-  )
-)
-
-
-app_cap_mapping_agent = Agent(
-  name="App-cap mapping Agent",
-  instructions="""You are an Enterprise Architecture assistant.
+if not os.getenv("OPENAI_API_KEY"):
+    st.error("OPENAI_API_KEY not found. Ensure it's set in .env or environment variables.")
+    st.stop()
+# -----------------------------
+# Your prompts (as provided)
+# -----------------------------
+MAPPING_PROMPT = r"""
+You are an Enterprise Architecture assistant.
 Your task is to map Applications to Business Capabilities to support Application Portfolio Mapping (APM).
 
 ENTERPRISE GLOSSARY
@@ -129,6 +30,7 @@ ENTERPRISE GLOSSARY
 
 INPUT REQUIREMENTS
 - Applications must be provided as an attached CSV or pasted CSV text.
+
 INSTRUCTIONS
 1. Identify which Applications directly enable or support each Capability.
 2. Each application may map to one or more capabilities.
@@ -136,107 +38,288 @@ INSTRUCTIONS
 4. Classify the domain and owner of the application.
 5. Respond only in the required CSV format — no explanations or commentary.
 6. Ask the user for user input
-7.ONLY respond when orchestration agent asked you to.
-8.If the user pastes capabilities, then map those capabilities; otherwise, use the capabilities generated by the capability agent.
+7. If the user pastes capabilities, then map those capabilities; otherwise, use the capabilities generated by the capability agent.
 
-OUTPUT FORMAT 
-'''
+OUTPUT FORMAT
 CSV
-'''
-Example:
-Capability name, Application ID, Application name, domain, owner
-Claims information management, A1,A10,A15, Claim information, Claims, Claims ops
-Customer Information Management,A7,Customer Account Management,Customer Service & Operations, Customer solutions
 
+Example (one row per Application mapped to a Capability)
+Capability name,Application ID,Application name,Domain,Owner,Lifecycle stage,Functional fit,Business value,Cost
+Claims Information Management,A1,ClaimCore,Claim Information,Claims Ops,Active,High,High,120000
+Claims Information Management,A10,ClaimArchive Pro,Claim Information,Claims Ops,Active,Medium,Medium,60000
+Claims Information Management,A15,ClaimsLite,Claim Information,Claims Ops,Active,Low,Low,15000
+Customer Information Management,A7,Customer Account Management,Customer Service & Operations,Customer Solutions,Active,High,High,80000
 
 USER INPUT
 Capabilities CSV: {{Capabilities}}
 Applications CSV: {{Applications}}
-""",
-  model="gpt-4.1",
-  tools=[
-    wait_for_user_input
-  ],
-  model_settings=ModelSettings(
-    temperature=1,
-    top_p=1,
-    parallel_tool_calls=True,
-    max_tokens=2048,
-    store=True
-  )
+""".strip()
+
+
+ASSESSMENT_PROMPT = r"""
+You are an Application Portfolio Assessment (APA) Assessment Agent.
+
+OBJECTIVE
+Using ONLY the user-provided mapped Application Capability dataset, produce an APA baseline that:
+1) Measures redundancy (functional overlap) by Capability
+2) Flags redundancy signals by Domain and Owner
+3) Recommends rationalisation actions (Retain/Consolidate/Replace/Retire/Renovate) per application using ONLY provided fields (no assumptions)
+
+ENTERPRISE GLOSSARY (triple form)
+- Capability — represents — what the business does to achieve outcomes.
+- Capability — is enabled or delivered by — one or more Applications.
+- Application — automates/supports/enables — one or more Capabilities.
+- Application rationalisation — decides — retain, replace, retire, consolidate, or renovate to reduce cost and improve efficiency.
+- Redundancy — means — multiple Applications supporting the same Capability (functional overlap).
+- Retain — means — keep applications that are critical/fit-for-purpose.
+- Replace — means — substitute with a better alternative.
+- Retire — means — remove applications no longer needed.
+- Consolidate — means — merge duplicates into a single solution.
+- Renovate — means — modernise or re-engineer an application.
+
+INPUT (provided by user; one row per mapping)
+Columns:
+Capability name, Application ID, Application name, Domain, Owner, Lifecycle stage, Functional fit, Business value, Cost
+
+RULES (STRICT)
+1) Use ONLY the provided mappings. Do NOT invent missing data. If a field is missing, leave it blank.
+2) Deduplicate exact-duplicate mappings (same Capability + same Application ID/name).
+3) Redundancy by Capability:
+   - Group rows by Capability name.
+   - Applications = semicolon-separated list of unique Application names (or IDs if names missing).
+   - App_Count = number of unique Applications for the Capability.
+   - Redundancy_Flag = Yes if App_Count > 1 else No.
+4) Domain redundancy signal (within the same Capability):
+   - Domain_Redundancy_Flag = Yes if 2 plus applications under that Capability share the same Domain; else No.
+5) Owner redundancy signal (within the same Capability):
+   - Owner_Redundancy_Flag = Yes if 2 plus applications under that Capability share the same Owner; else No.
+
+RATIONALISATION LOGIC (USE ONLY PROVIDED FIT/VALUE/COST/LIFECYCLE)
+For each Capability with overlap (App_Count > 1), rank applications using:
+- Prefer higher Business value
+- Prefer higher Functional fit
+- Prefer lower Cost (only as a tie-breaker)
+- Prefer Active over non-active lifecycle stages (if provided)
+
+Action assignment (per Capability group):
+- Best-ranked application → Retain
+- Other overlapping applications:
+   - If Functional fit is Low OR Business value is Low → Replace (if an alternative exists in the same capability group) OR Consolidate
+   - If Lifecycle indicates end-of-life/retired (if explicitly provided) → Retire
+   - If Functional fit is Medium/High but needs improvement (only if indicated by provided data) → Renovate
+   - Default for overlaps when unsure → Consolidate
+IMPORTANT: Do not recommend Replace/Retire/Renovate unless supported by provided fields.
+
+OUTPUT (CSV ONLY — NO COMMENTARY)
+Use commas and semicolons exactly as shown:
+
+Capability,Domain,Owner,Applications,App_Count,Redundancy_Flag,Domain_Redundancy_Flag,Owner_Redundancy_Flag,Recommended_Action
+<Capability>,<Domain>,<Owner>,"<App 1>";"<App 2>",<number>,<Yes/No>,<Yes/No>,<Yes/No>,"<App1:Action>;<App2:Action>"
+""".strip()
+
+
+# -----------------------------
+# Agents
+# -----------------------------
+mapping_agent = Agent(
+    name="MappingAgent",
+    instructions=MAPPING_PROMPT,
+    model="gpt-4o",
+)
+
+assessment_agent = Agent(
+    name="AssessmentAgent",
+    instructions=ASSESSMENT_PROMPT,
+    model="gpt-4o",
 )
 
 
-class WorkflowInput(BaseModel):
-  input_as_text: str
+# -----------------------------
+# Utilities
+# -----------------------------
+def is_retire_question(q: str) -> bool:
+    return bool(re.search(r"\bretire|retired|decommission|sunset|eol|end[- ]of[- ]life\b", q.lower()))
 
 
-# Main code entrypoint
-async def run_workflow(workflow_input: WorkflowInput):
-  with trace("Content generation"):
-    state = {
+def read_any(uploaded) -> pd.DataFrame:
+    name = uploaded.name.lower()
+    if name.endswith((".xlsx", ".xls")):
+        return pd.read_excel(uploaded)
+    return pd.read_csv(uploaded)
 
-    }
-    workflow = workflow_input.model_dump()
-    conversation_history: list[TResponseInputItem] = [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "input_text",
-            "text": workflow["input_as_text"]
-          }
-        ]
-      }
-    ]
-    entity_agent_result_temp = await Runner.run(
-      entity_agent,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_691e87316068819098b9d587c9817a690e6bddb2ca056818"
-      })
+
+def coerce_csv_text_from_df(df: pd.DataFrame) -> str:
+    return df.to_csv(index=False)
+
+
+def try_parse_csv(text: str) -> Tuple[Optional[pd.DataFrame], Optional[str]]:
+    """
+    Parses CSV from model output.
+    Returns (df, error). error is None if successful.
+    """
+    cleaned = text.strip()
+
+    # Some models might wrap in ```csv ... ```
+    cleaned = re.sub(r"^```csv\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"^```\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    # Hard guard: must contain at least one comma (= likely CSV)
+    if "," not in cleaned.splitlines()[0]:
+        return None, "Output does not look like CSV (missing commas in header)."
+
+    try:
+        df = pd.read_csv(io.StringIO(cleaned))
+        if df.empty:
+            # Empty CSV can parse but be useless
+            return df, None
+        return df, None
+    except Exception as e:
+        return None, f"Failed to parse CSV: {e}"
+
+
+def run_agent_csv(agent: Agent, payload: str, max_turns: int = 2) -> str:
+    result = Runner.run_sync(
+        starting_agent=agent,
+        input=payload,
+        max_turns=max_turns,
     )
+    # RunResult has final_output (string) according to docs
+    return result.final_output
 
-    conversation_history.extend([item.to_input_item() for item in entity_agent_result_temp.new_items])
 
-    entity_agent_result = {
-      "output_text": entity_agent_result_temp.final_output.json(),
-      "output_parsed": entity_agent_result_temp.final_output.model_dump()
-    }
-    orchestration_agent_result_temp = await Runner.run(
-      orchestration_agent,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_691e87316068819098b9d587c9817a690e6bddb2ca056818"
-      })
+# -----------------------------
+# Streamlit UI
+# -----------------------------
+st.set_page_config(page_title="APM Mapping + APA Assessment (Agents SDK)", layout="wide")
+st.title("APM Mapping + APA Assessment (OpenAI Agents SDK)")
+
+st.sidebar.header("Inputs")
+
+capabilities_text = st.sidebar.text_area(
+    "Capabilities CSV (optional)",
+    placeholder="Paste capability list CSV here (optional). If blank, mapping agent should use capability agent output (per your prompt).",
+    height=140,
+)
+
+apps_upload = st.sidebar.file_uploader("Upload Applications file (CSV/XLSX)", type=["csv", "xlsx", "xls"])
+apps_text = st.sidebar.text_area(
+    "Or paste Applications CSV text",
+    placeholder="Paste applications CSV here instead of uploading a file.",
+    height=180,
+)
+
+st.sidebar.divider()
+model_note = st.sidebar.caption("Model: gpt-5.1 (change in code if needed)")
+
+# Session state
+if "apps_df" not in st.session_state:
+    st.session_state.apps_df = None
+if "mapping_df" not in st.session_state:
+    st.session_state.mapping_df = None
+if "assessment_df" not in st.session_state:
+    st.session_state.assessment_df = None
+if "assessment_raw_csv" not in st.session_state:
+    st.session_state.assessment_raw_csv = None
+if "mapping_raw_csv" not in st.session_state:
+    st.session_state.mapping_raw_csv = None
+
+
+# Load applications dataframe if available
+apps_df = None
+if apps_upload is not None:
+    apps_df = read_any(apps_upload)
+elif apps_text.strip():
+    apps_df = pd.read_csv(io.StringIO(apps_text.strip()))
+
+st.session_state.apps_df = apps_df
+
+colA, colB = st.columns([1, 1])
+
+with colA:
+    st.subheader("1) Applications")
+    if apps_df is None:
+        st.info("Upload an Applications CSV/XLSX or paste Applications CSV text to begin.")
+    else:
+        st.dataframe(apps_df, use_container_width=True, height=320)
+        st.download_button(
+            "Download Applications CSV (normalized)",
+            data=coerce_csv_text_from_df(apps_df),
+            file_name="applications_normalized.csv",
+            mime="text/csv",
+        )
+
+with colB:
+    st.subheader("2) Mapping Agent → App↔Capability mappings")
+    st.caption("Produces: Capability name,Application ID,Application name,Domain,Owner,Lifecycle stage,Functional fit,Business value,Cost")
+
+    run_map = st.button("Run Mapping Agent", type="primary", disabled=(apps_df is None))
+
+    if run_map:
+        apps_csv = coerce_csv_text_from_df(apps_df)
+        payload = f"Capabilities CSV:\n{capabilities_text.strip()}\n\nApplications CSV:\n{apps_csv}"
+        out = run_agent_csv(mapping_agent, payload, max_turns=2)
+        st.session_state.mapping_raw_csv = out
+
+        mapped_df, err = try_parse_csv(out)
+        if err:
+            st.error(err)
+            st.code(out)
+        else:
+            st.session_state.mapping_df = mapped_df
+
+    if st.session_state.mapping_df is not None:
+        st.success("Mapping created.")
+        st.dataframe(st.session_state.mapping_df, use_container_width=True, height=320)
+
+        st.download_button(
+            "Download Mapping CSV",
+            data=st.session_state.mapping_df.to_csv(index=False),
+            file_name="app_capability_mapping.csv",
+            mime="text/csv",
+        )
+    elif st.session_state.mapping_raw_csv:
+        st.warning("Mapping output received but not parsed. Showing raw:")
+        st.code(st.session_state.mapping_raw_csv)
+
+
+st.divider()
+
+st.subheader("3) Assessment Agent → Baseline / Q&A")
+
+question = st.text_input(
+    "Ask a question (examples: 'Generate baseline', 'Which applications should be retired?')",
+    value="Generate baseline",
+)
+
+run_assess = st.button("Run Assessment", disabled=(st.session_state.mapping_df is None))
+
+if run_assess:
+    mapped_csv = st.session_state.mapping_df.to_csv(index=False)
+    payload = f"MAPPED_APPLICATION_CAPABILITY_DATASET:\n{mapped_csv}\n\nUSER_QUESTION:\n{question}"
+    out = run_agent_csv(assessment_agent, payload, max_turns=2)
+    st.session_state.assessment_raw_csv = out
+
+    assessed_df, err = try_parse_csv(out)
+    if err:
+        st.error(err)
+        st.code(out)
+    else:
+        st.session_state.assessment_df = assessed_df
+
+if st.session_state.assessment_df is not None:
+    mode = "Retire list" if is_retire_question(question) else "Baseline"
+    st.success(f"Assessment complete ({mode}).")
+    st.dataframe(st.session_state.assessment_df, use_container_width=True, height=360)
+
+    filename = "apps_to_retire.csv" if is_retire_question(question) else "apa_baseline.csv"
+    st.download_button(
+        "Download Output CSV",
+        data=st.session_state.assessment_df.to_csv(index=False),
+        file_name=filename,
+        mime="text/csv",
     )
-
-    conversation_history.extend([item.to_input_item() for item in orchestration_agent_result_temp.new_items])
-
-    orchestration_agent_result = {
-      "output_text": orchestration_agent_result_temp.final_output.json(),
-      "output_parsed": orchestration_agent_result_temp.final_output.model_dump()
-    }
-    capability_agent_result_temp = await Runner.run(
-      capability_agent,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_691e87316068819098b9d587c9817a690e6bddb2ca056818"
-      })
-    )
-
-    conversation_history.extend([item.to_input_item() for item in capability_agent_result_temp.new_items])
-
-    capability_agent_result = {
-      "output_text": capability_agent_result_temp.final_output_as(str)
-    }
-    return capability_agent_result
+elif st.session_state.assessment_raw_csv:
+    st.warning("Assessment output received but not parsed. Showing raw:")
+    st.code(st.session_state.assessment_raw_csv)
+st.title("Architecture Copilot")
