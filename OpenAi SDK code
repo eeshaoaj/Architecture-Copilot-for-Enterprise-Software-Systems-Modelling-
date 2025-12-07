@@ -16,7 +16,7 @@ if not os.getenv("OPENAI_API_KEY"):
     st.error("OPENAI_API_KEY not found. Ensure it's set in .env or environment variables.")
     st.stop()
 # -----------------------------
-# Your prompts (as provided)
+# Prompts 
 # -----------------------------
 MAPPING_PROMPT = r"""
 You are an Enterprise Architecture assistant.
